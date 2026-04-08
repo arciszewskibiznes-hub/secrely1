@@ -89,13 +89,7 @@ function ResetPasswordContent() {
               </p>
             </div>
 
-            {!sessionReady && (
-              <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-4">
-                <p className="text-xs text-amber-700">
-                  Ładowanie sesji resetowania hasła... Upewnij się że kliknąłeś link z emaila.
-                </p>
-              </div>
-            )}
+
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-1.5">
@@ -148,7 +142,7 @@ function ResetPasswordContent() {
                 variant="purple"
                 size="lg"
                 className="w-full"
-                disabled={loading || !sessionReady || newPassword !== confirmPassword || newPassword.length < 6}
+                disabled={loading || newPassword !== confirmPassword || newPassword.length < 6}
               >
                 {loading ? (
                   <span className="flex items-center gap-2">
