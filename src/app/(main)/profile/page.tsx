@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { motion } from "motion/react";
-import { Settings, Grid, Heart, Lock, Edit3, Camera } from "lucide-react";
+import { motion, AnimatePresence } from "motion/react";
+import { Settings, Grid, Heart, Lock, Edit3, Camera, Trash2 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -14,6 +14,7 @@ import { useFollows } from "@/hooks/useFollows";
 import { createClient } from "@/lib/supabase/client";
 import { getInitials, formatNumber, formatCredits } from "@/lib/utils";
 import { cn } from "@/lib/utils";
+import { toast } from "@/hooks/useToast";
 import type { Post } from "@/types/database";
 
 const supabase = createClient();
@@ -30,45 +31,63 @@ export default function ProfilePage() {
   const [unlockedPosts, setUnlockedPosts] = useState<Post[]>([]);
   const [loadingPosts, setLoadingPosts] = useState(false);
   const [followerCount, setFollowerCount] = useState(0);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!profile?.id) return;
-    // Fetch follower count (people following ME)
     supabase.rpc("get_follower_count", { p_user_id: profile.id })
       .then(({ data }) => setFollowerCount(data ?? 0));
   }, [profile?.id]);
 
-  useEffect(() => {
+  const loadPosts = useCallback(async () => {
     if (!profile?.id) return;
     setLoadingPosts(true);
-    const load = async () => {
-      const { data: myPostsData } = await supabase
-        .from("posts")
-        .select("id, creator_id, image_url, caption, teaser_text, price, is_locked, like_count, view_count, comment_count, tags, created_at")
-        .eq("creator_id", profile.id)
-        .order("created_at", { ascending: false });
-      setMyPosts((myPostsData ?? []).map(p => ({ ...p, creator: profile })) as Post[]);
+    const { data: myPostsData } = await supabase
+      .from("posts")
+      .select("id, creator_id, image_url, caption, teaser_text, price, is_locked, like_count, view_count, comment_count, tags, created_at")
+      .eq("creator_id", profile.id)
+      .order("created_at", { ascending: false });
+    setMyPosts((myPostsData ?? []).map(p => ({ ...p, creator: profile })) as Post[]);
 
-      const { data: likeData } = await supabase
-        .from("post_likes").select("post_id").eq("user_id", profile.id);
-      if (likeData?.length) {
-        const { data: lp } = await supabase.from("posts")
-          .select("id, creator_id, image_url, caption, teaser_text, price, is_locked, like_count, view_count, comment_count, tags, created_at")
-          .in("id", likeData.map(r => r.post_id));
-        setLikedPosts((lp ?? []).map(p => ({ ...p, creator: null })) as Post[]);
-      }
-      const { data: unlockData } = await supabase
-        .from("unlocked_posts").select("post_id").eq("user_id", profile.id);
-      if (unlockData?.length) {
-        const { data: up } = await supabase.from("posts")
-          .select("id, creator_id, image_url, caption, teaser_text, price, is_locked, like_count, view_count, comment_count, tags, created_at")
-          .in("id", unlockData.map(r => r.post_id));
-        setUnlockedPosts((up ?? []).map(p => ({ ...p, creator: null })) as Post[]);
-      }
-      setLoadingPosts(false);
-    };
-    load();
+    const { data: likeData } = await supabase
+      .from("post_likes").select("post_id").eq("user_id", profile.id);
+    if (likeData?.length) {
+      const { data: lp } = await supabase.from("posts")
+        .select("id, creator_id, image_url, caption, teaser_text, price, is_locked, like_count, view_count, comment_count, tags, created_at")
+        .in("id", likeData.map(r => r.post_id));
+      setLikedPosts((lp ?? []).map(p => ({ ...p, creator: null })) as Post[]);
+    }
+    const { data: unlockData } = await supabase
+      .from("unlocked_posts").select("post_id").eq("user_id", profile.id);
+    if (unlockData?.length) {
+      const { data: up } = await supabase.from("posts")
+        .select("id, creator_id, image_url, caption, teaser_text, price, is_locked, like_count, view_count, comment_count, tags, created_at")
+        .in("id", unlockData.map(r => r.post_id));
+      setUnlockedPosts((up ?? []).map(p => ({ ...p, creator: null })) as Post[]);
+    }
+    setLoadingPosts(false);
   }, [profile?.id]);
+
+  useEffect(() => {
+    loadPosts();
+  }, [loadPosts]);
+
+  const handleDeletePost = async (postId: string) => {
+    setDeletingId(postId);
+    try {
+      await supabase.from("unlocked_posts").delete().eq("post_id", postId);
+      const { error } = await supabase.from("posts").delete().eq("id", postId);
+      if (error) throw error;
+      setMyPosts(prev => prev.filter(p => p.id !== postId));
+      toast({ title: "Post usunięty", variant: "success" });
+    } catch (err) {
+      toast({ title: "Błąd usuwania", description: String(err), variant: "destructive" });
+    } finally {
+      setDeletingId(null);
+      setConfirmDeleteId(null);
+    }
+  };
 
   if (authLoading) return (
     <div className="animate-pulse space-y-3">
@@ -102,14 +121,12 @@ export default function ProfilePage() {
         transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
         className="relative rounded-3xl overflow-hidden" style={S.card}>
 
-        {/* Decorative radial */}
         <div style={{
           position: "absolute", top: -60, left: "50%", transform: "translateX(-50%)",
           width: 400, height: 280, borderRadius: "50%", pointerEvents: "none",
           background: "radial-gradient(circle, rgba(192,38,211,0.22) 0%, transparent 70%)",
         }} />
 
-        {/* Top actions */}
         <div className="absolute top-4 right-4 z-10 flex gap-2">
           <Link href="/settings" style={{
             width: 32, height: 32, borderRadius: "50%", display: "flex",
@@ -129,7 +146,6 @@ export default function ProfilePage() {
         </div>
 
         <div className="relative px-5 pt-10 pb-5">
-          {/* Avatar row */}
           <div className="flex items-end gap-4 mb-5">
             <div className="relative flex-shrink-0">
               <div className="w-[76px] h-[76px] rounded-[20px] overflow-hidden"
@@ -162,21 +178,18 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          {/* Bio */}
           {profile?.bio && (
             <p className="text-[13px] leading-relaxed mb-4" style={{ color: "rgba(255,255,255,0.55)" }}>
               {profile.bio}
             </p>
           )}
 
-          {/* Balance */}
           <div className="inline-flex items-center gap-2.5 px-4 py-2.5 mb-5" style={S.balancePill}>
             <Diamond size={14} className="text-fuchsia-400 flex-shrink-0" />
             <span className="text-[15px] font-black text-white">{formatCredits(balance)}</span>
             <span className="text-[11px]" style={{ color: "rgba(255,255,255,0.35)" }}>diamentów</span>
           </div>
 
-          {/* Stats 4-grid */}
           <div className="grid grid-cols-4 gap-2">
             {[
               { label: "Posty", value: myPosts.length },
@@ -246,7 +259,9 @@ export default function ProfilePage() {
           {displayPosts.map((post, i) => (
             <motion.div key={post.id}
               initial={{ opacity: 0, scale: 0.93 }} animate={{ opacity: 1, scale: 1 }}
-              transition={{ delay: i * 0.03 }}>
+              transition={{ delay: i * 0.03 }}
+              className="relative"
+            >
               <Link href={`/post/${post.id}`}
                 className="block relative aspect-square rounded-xl overflow-hidden bg-secondary group">
                 {post.image_url && (
@@ -265,6 +280,49 @@ export default function ProfilePage() {
                   </div>
                 </div>
               </Link>
+
+              {/* Przycisk usuwania — tylko na własnych postach */}
+              {activeTab === "posts" && (
+                <button
+                  onClick={(e) => {
+                    e.preventDefault();
+                    setConfirmDeleteId(confirmDeleteId === post.id ? null : post.id);
+                  }}
+                  className="absolute top-1.5 right-1.5 w-7 h-7 rounded-lg flex items-center justify-center bg-black/50 hover:bg-red-500 text-white transition-colors backdrop-blur-sm"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              )}
+
+              {/* Potwierdzenie usunięcia */}
+              <AnimatePresence>
+                {confirmDeleteId === post.id && (
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.9 }}
+                    className="absolute inset-0 rounded-xl flex flex-col items-center justify-center gap-2 p-3"
+                    style={{ background: "rgba(0,0,0,0.85)", backdropFilter: "blur(4px)" }}
+                  >
+                    <p className="text-white text-[10px] font-semibold text-center">Usunąć post?</p>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setConfirmDeleteId(null)}
+                        className="px-3 py-1.5 rounded-lg bg-white/10 text-white text-[10px] font-semibold hover:bg-white/20 transition-colors"
+                      >
+                        Anuluj
+                      </button>
+                      <button
+                        onClick={() => handleDeletePost(post.id)}
+                        disabled={deletingId === post.id}
+                        className="px-3 py-1.5 rounded-lg bg-rose-500 text-white text-[10px] font-semibold hover:bg-rose-600 transition-colors disabled:opacity-50"
+                      >
+                        {deletingId === post.id ? "..." : "Usuń"}
+                      </button>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </motion.div>
           ))}
         </div>
