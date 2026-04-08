@@ -643,6 +643,12 @@ export default function LandingPage() {
 
         .nav-link { color: #555; font-size: 14px; text-decoration: none; font-weight: 500; transition: color 0.2s; }
         .nav-link:hover { color: #7c3aed; }
+        @media (max-width: 640px) {
+          .nav-desktop-links { display: none !important; }
+          .nav-desktop-cta { display: none !important; }
+          .nav-mobile-cta { display: flex !important; }
+          .floating-cards { display: none !important; }
+        }
 
         .btn-primary {
           display: inline-flex; align-items: center; gap: 8px;
@@ -756,36 +762,43 @@ export default function LandingPage() {
       {/* NAV */}
       <nav style={{
         position: "fixed", top: 0, left: 0, right: 0, zIndex: 100,
-        padding: "0 24px",
-        background: scrolled ? "rgba(250,250,250,0.92)" : "transparent",
+        padding: "0 16px",
+        background: scrolled ? "rgba(250,250,250,0.95)" : "transparent",
         backdropFilter: scrolled ? "blur(20px)" : "none",
         borderBottom: scrolled ? "1px solid rgba(0,0,0,0.06)" : "none",
         transition: "all 0.3s",
       }}>
-        <div style={{ maxWidth: 1200, margin: "0 auto", height: 68, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{
-              width: 36, height: 36, borderRadius: 10,
-              background: "linear-gradient(135deg,#ec4899,#c026d3,#7c3aed)",
-              display: "flex", alignItems: "center", justifyContent: "center",
-            }}>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <div style={{ maxWidth: 1200, margin: "0 auto", height: 60, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          {/* Logo */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ width: 32, height: 32, borderRadius: 9, background: "linear-gradient(135deg,#ec4899,#c026d3,#7c3aed)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                 <polygon points="12,2 20,9 12,9" fill="white" opacity="0.6" />
                 <polygon points="12,2 4,9 12,9" fill="white" opacity="0.85" />
                 <polygon points="4,9 12,22 20,9" fill="white" />
                 <polygon points="12,9 12,22 20,9" fill="white" opacity="0.75" />
               </svg>
             </div>
-            <span style={{ fontSize: 20, fontWeight: 800, letterSpacing: "-0.03em", color: "#1a0030" }}>Secrely</span>
+            <span style={{ fontSize: 18, fontWeight: 800, letterSpacing: "-0.03em", color: "#1a0030" }}>Secrely</span>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 32 }}>
+
+          {/* Desktop links — hidden on mobile */}
+          <div className="nav-desktop-links" style={{ display: "flex", alignItems: "center", gap: 32 }}>
             <a href="#features" className="nav-link">Funkcje</a>
             <a href="#how" className="nav-link">Jak to działa</a>
             <a href="#creators" className="nav-link">Twórcy</a>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <Link href="/sign-in" className="nav-link" style={{ padding: "8px 16px" }}>Zaloguj się</Link>
-            <Link href="/sign-up" className="btn-primary" style={{ padding: "10px 20px", fontSize: 14 }}>Zacznij za darmo</Link>
+
+          {/* Desktop CTA — hidden on mobile */}
+          <div className="nav-desktop-cta" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <Link href="/sign-in" className="nav-link" style={{ padding: "8px 14px" }}>Zaloguj się</Link>
+            <Link href="/sign-up" className="btn-primary" style={{ padding: "9px 18px", fontSize: 13 }}>Zacznij za darmo</Link>
+          </div>
+
+          {/* Mobile CTA — only on mobile */}
+          <div className="nav-mobile-cta" style={{ display: "none", alignItems: "center", gap: 8 }}>
+            <Link href="/sign-in" style={{ fontSize: 13, color: "#555", textDecoration: "none", padding: "8px 10px", fontWeight: 500 }}>Zaloguj</Link>
+            <Link href="/sign-up" className="btn-primary" style={{ padding: "9px 16px", fontSize: 13 }}>Dołącz</Link>
           </div>
         </div>
       </nav>
@@ -854,8 +867,8 @@ export default function LandingPage() {
           </div>
         </div>
 
-        {/* Floating creator cards */}
-        <div style={{ position: "absolute", left: "3%", top: "35%", animation: "float 7s ease-in-out infinite" }}>
+        {/* Floating creator cards — hidden on mobile */}
+        <div className="floating-cards" style={{ position: "absolute", left: "3%", top: "35%", animation: "float 7s ease-in-out infinite" }}>
           <div className="creator-card" style={{ width: 220 }}>
             <div className="avatar-ring">A</div>
             <div style={{ flex: 1, minWidth: 0 }}>
