@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { motion } from "motion/react";
 import { TrendingUp, ArrowUpRight, ArrowDownLeft, Gift, Check, Zap, Banknote, Loader2 } from "lucide-react";
@@ -26,6 +26,18 @@ const CREDIT_PACKAGES: CreditPackage[] = [
 const CREDIT_TO_PLN = 0.10;
 
 export default function WalletPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center min-h-[300px]">
+        <div className="w-8 h-8 border-2 border-purple-300 border-t-purple-600 rounded-full animate-spin" />
+      </div>
+    }>
+      <WalletContent />
+    </Suspense>
+  );
+}
+
+function WalletContent() {
   const { balance, transactions, addCredits, isLoading, refetch } = useCredits();
   const { user } = useAuth();
   const searchParams = useSearchParams();
