@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { motion } from "motion/react";
-import { TrendingUp, ArrowUpRight, ArrowDownLeft, Gift, Check, Zap, Banknote } from "lucide-react";
+import { TrendingUp, ArrowUpRight, ArrowDownLeft, Gift, Check, Zap, Banknote, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -10,26 +11,24 @@ import { Diamond } from "@/components/Diamond";
 import { useCredits } from "@/hooks/useCredits";
 import { useAuth } from "@/hooks/useAuth";
 import { createClient } from "@/lib/supabase/client";
-import { useT, interpolate } from "@/hooks/useT";
 import { formatCredits, timeAgo } from "@/lib/utils";
 import { toast } from "@/hooks/useToast";
 import { cn } from "@/lib/utils";
 import type { CreditPackage } from "@/types/database";
 
 const CREDIT_PACKAGES: CreditPackage[] = [
-  { id: "pack_starter", credits: 100, price: 4.99, label: "Starter" },
-  { id: "pack_popular", credits: 500, price: 19.99, label: "Popular", popular: true, bonus: 50 },
-  { id: "pack_creator", credits: 1200, price: 44.99, label: "Creator", bonus: 200 },
-  { id: "pack_pro", credits: 3000, price: 99.99, label: "Pro", bonus: 750 },
+  { id: "pack_starter",  credits: 100,  price: 14.99, label: "Starter" },
+  { id: "pack_popular",  credits: 500,  price: 69.99, label: "Popular",  popular: true, bonus: 50  },
+  { id: "pack_creator",  credits: 1200, price: 159.99, label: "Creator", bonus: 150 },
+  { id: "pack_pro",      credits: 3000, price: 399.99, label: "Pro",      bonus: 500 },
 ];
 
-// 1 credit = 0.01 PLN (adjust as needed)
-const CREDIT_TO_PLN = 0.10; // 100 💎 = 10 PLN
+const CREDIT_TO_PLN = 0.10;
 
 export default function WalletPage() {
-  const { balance, transactions, addCredits, isLoading } = useCredits();
+  const { balance, transactions, addCredits, isLoading, refetch } = useCredits();
   const { user } = useAuth();
-  const t = useT().wallet;
+  const searchParams = useSearchParams();
   const [showPayout, setShowPayout] = useState(false);
   const [payoutCredits, setPayoutCredits] = useState("");
   const [iban, setIban] = useState("");
@@ -39,15 +38,57 @@ export default function WalletPage() {
   const [postalCode, setPostalCode] = useState("");
   const [phone, setPhone] = useState("");
   const [payoutLoading, setPayoutLoading] = useState(false);
+  const [purchasingId, setPurchasingId] = useState<string | null>(null);
 
-  const handlePurchase = async (credits: number, bonus: number | undefined, label: string) => {
-    const total = credits + (bonus ?? 0);
-    await addCredits(total, interpolate(t.purchased, { label }));
-    toast({
-      title: interpolate(t.toastTitle, { total: formatCredits(total) }),
-      description: t.toastDesc,
-      variant: "success",
-    });
+  // Handle Stripe redirect back
+  useEffect(() => {
+    const success = searchParams.get("success");
+    const cancelled = searchParams.get("cancelled");
+    const credits = searchParams.get("credits");
+
+    if (success === "1" && credits) {
+      toast({
+        title: `✅ Zakup udany! +${credits} 💎`,
+        description: "Diamenty zostały dodane do Twojego portfela.",
+        variant: "success",
+      });
+      refetch?.();
+      // Clean URL
+      window.history.replaceState({}, "", "/wallet");
+    }
+    if (cancelled === "1") {
+      toast({ title: "Zakup anulowany", variant: "destructive" });
+      window.history.replaceState({}, "", "/wallet");
+    }
+  }, [searchParams]);
+
+  const handlePurchase = async (pkg: CreditPackage) => {
+    if (!user) {
+      toast({ title: "Zaloguj się aby kupić diamenty", variant: "destructive" });
+      return;
+    }
+
+    setPurchasingId(pkg.id);
+    try {
+      const res = await fetch("/api/stripe/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ packageId: pkg.id }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.url) {
+        throw new Error(data.error ?? "Błąd tworzenia sesji płatności");
+      }
+
+      // Redirect to Stripe Checkout
+      window.location.href = data.url;
+    } catch (err) {
+      console.error(err);
+      toast({ title: "Błąd płatności", description: String(err), variant: "destructive" });
+      setPurchasingId(null);
+    }
   };
 
   const handlePayout = async (e: React.FormEvent) => {
@@ -55,7 +96,6 @@ export default function WalletPage() {
     if (!user) return;
     const credits = parseInt(payoutCredits, 10);
 
-    // Validation
     if (!fullName.trim() || !iban.trim() || !city.trim() || !street.trim() || !postalCode.trim() || !phone.trim()) {
       toast({ title: "Uzupełnij wszystkie pola", variant: "destructive" });
       return;
@@ -65,15 +105,15 @@ export default function WalletPage() {
       return;
     }
     if (balance < credits) {
-      toast({ title: "Nie masz wystarczająco kredytów", variant: "destructive" });
+      toast({ title: "Nie masz wystarczająco diamentów", variant: "destructive" });
       return;
     }
 
     setPayoutLoading(true);
     const supabase = createClient();
     const amount_pln = parseFloat((credits * CREDIT_TO_PLN).toFixed(2));
-
     const address = `${street.trim()}, ${postalCode.trim()} ${city.trim()}`;
+
     const { error } = await supabase.from("payouts").insert({
       user_id: user.id,
       credits,
@@ -81,12 +121,15 @@ export default function WalletPage() {
       iban: iban.replace(/\s/g, ""),
       full_name: fullName.trim(),
       address,
-      phone: phone.trim(),
     });
 
     if (!error) {
-      await addCredits(-credits, `Wypłata — ${credits} diamentów → ${amount_pln} PLN`);
-      toast({ title: "Pomyślnie zlecono wypłatę!", description: `${credits} diamentów → ${amount_pln} PLN — realizacja do 3 dni roboczych`, variant: "success" });
+      await addCredits(-credits, `Wypłata — ${credits} 💎 → ${amount_pln} PLN`);
+      toast({
+        title: "Wypłata zlecona!",
+        description: `${credits} 💎 → ${amount_pln} PLN — realizacja do 3 dni roboczych`,
+        variant: "success",
+      });
       setShowPayout(false);
       setPayoutCredits(""); setIban(""); setFullName("");
       setCity(""); setStreet(""); setPostalCode(""); setPhone("");
@@ -110,7 +153,7 @@ export default function WalletPage() {
         <div className="relative">
           <div className="flex items-center gap-2 mb-1">
             <Diamond size={14} className="text-white/80" />
-            <span className="text-sm text-white/80 font-medium">{t.title}</span>
+            <span className="text-sm text-white/80 font-medium">Twój portfel</span>
           </div>
           <div className="text-4xl font-bold tabular-nums mb-4">
             {isLoading ? "—" : formatCredits(balance)}
@@ -118,7 +161,7 @@ export default function WalletPage() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5 text-xs text-white/70">
               <TrendingUp className="w-3.5 h-3.5" />
-              <span>{t.hint}</span>
+              <span>1 💎 = 0,10 PLN przy wypłacie</span>
             </div>
             <button
               onClick={() => setShowPayout((v) => !v)}
@@ -138,11 +181,10 @@ export default function WalletPage() {
           <div>
             <h3 className="text-sm font-bold text-foreground">Wypłata środków</h3>
             <p className="text-xs text-muted-foreground mt-0.5">
-              100 <Diamond size={10} className="text-[hsl(270,75%,60%)] inline" /> = 10 zł · Minimum 500 <Diamond size={10} className="text-[hsl(270,75%,60%)] inline" /> (50 zł) · Realizacja do 3 dni roboczych
+              Minimum 500 💎 (50 zł) · Realizacja do 3 dni roboczych
             </p>
           </div>
           <form onSubmit={handlePayout} className="space-y-3">
-            {/* Credits amount */}
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                 Liczba diamentów do wypłaty
@@ -150,23 +192,19 @@ export default function WalletPage() {
               <Input type="number" placeholder="np. 500" value={payoutCredits}
                 onChange={(e) => setPayoutCredits(e.target.value)} min="500" />
               {payoutCredits && !isNaN(parseInt(payoutCredits, 10)) && parseInt(payoutCredits, 10) >= 500 && (
-                <p className="text-xs text-[hsl(270,75%,60%)] font-semibold flex items-center gap-1">
-                  <span>{parseInt(payoutCredits, 10)}</span>
-                  <Diamond size={11} className="text-[hsl(270,75%,60%)]" />
-                  <span>= {(parseInt(payoutCredits, 10) * CREDIT_TO_PLN).toFixed(2)} PLN</span>
+                <p className="text-xs text-[hsl(270,75%,60%)] font-semibold">
+                  {parseInt(payoutCredits, 10)} 💎 = {(parseInt(payoutCredits, 10) * CREDIT_TO_PLN).toFixed(2)} PLN
                 </p>
               )}
             </div>
-
-            {/* Personal data */}
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Imię</label>
-                <Input placeholder="Jan" value={fullName.split(" ")[0] ?? ""} onChange={(e) => setFullName(e.target.value + " " + (fullName.split(" ")[1] ?? ""))} />
+                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Imię i nazwisko</label>
+                <Input placeholder="Jan Kowalski" value={fullName} onChange={(e) => setFullName(e.target.value)} />
               </div>
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Nazwisko</label>
-                <Input placeholder="Kowalski" value={fullName.split(" ")[1] ?? ""} onChange={(e) => setFullName((fullName.split(" ")[0] ?? "") + " " + e.target.value)} />
+                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Telefon</label>
+                <Input placeholder="+48 000 000 000" value={phone} onChange={(e) => setPhone(e.target.value)} />
               </div>
             </div>
             <div className="space-y-1.5">
@@ -184,15 +222,10 @@ export default function WalletPage() {
               </div>
             </div>
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Numer telefonu</label>
-              <Input placeholder="+48 000 000 000" value={phone} onChange={(e) => setPhone(e.target.value)} />
-            </div>
-            <div className="space-y-1.5">
               <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">IBAN</label>
               <Input placeholder="PL00 0000 0000 0000 0000 0000 0000"
                 value={iban} onChange={(e) => setIban(e.target.value)} />
             </div>
-
             <div className="flex gap-3 pt-1">
               <Button type="button" variant="outline" className="flex-1" onClick={() => setShowPayout(false)}>
                 Powrót
@@ -207,7 +240,7 @@ export default function WalletPage() {
 
       {/* Credit packages */}
       <div>
-        <h2 className="text-sm font-semibold text-foreground mb-3">{t.addCredits}</h2>
+        <h2 className="text-sm font-semibold text-foreground mb-3">Kup diamenty</h2>
         <div className="grid grid-cols-2 gap-3">
           {CREDIT_PACKAGES.map((pkg, i) => (
             <motion.div
@@ -215,11 +248,14 @@ export default function WalletPage() {
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.07, duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
-              className={cn("card-base p-4 relative cursor-pointer hover:shadow-card-hover transition-shadow", pkg.popular && "border-[hsl(270,75%,60%)] border-2")}
+              className={cn(
+                "card-base p-4 relative cursor-pointer hover:shadow-card-hover transition-shadow",
+                pkg.popular && "border-[hsl(270,75%,60%)] border-2"
+              )}
             >
               {pkg.popular && (
                 <div className="absolute -top-2.5 left-1/2 -translate-x-1/2">
-                  <Badge variant="default" className="text-[10px] px-2">{t.popular}</Badge>
+                  <Badge variant="default" className="text-[10px] px-2">Najpopularniejszy</Badge>
                 </div>
               )}
               <div className="flex items-center gap-1.5 mb-2">
@@ -228,33 +264,43 @@ export default function WalletPage() {
               </div>
               <div className="text-xl font-bold text-foreground tabular-nums">
                 {formatCredits(pkg.credits)}
-                {pkg.bonus && <span className="text-sm text-emerald-600 font-semibold ml-1">+{pkg.bonus}</span>}
+                {pkg.bonus && (
+                  <span className="text-sm text-emerald-600 font-semibold ml-1">+{pkg.bonus}</span>
+                )}
               </div>
-              <div className="text-xs text-muted-foreground mb-3 flex items-center gap-1"><Diamond size={11} className="text-[hsl(270,75%,60%)]" />{pkg.bonus ? " + bonus" : ""}</div>
+              <div className="text-xs text-muted-foreground mb-3 flex items-center gap-1">
+                <Diamond size={11} className="text-[hsl(270,75%,60%)]" />
+                {pkg.bonus ? " + bonus" : "diamentów"}
+              </div>
               <Button
                 size="sm"
                 variant={pkg.popular ? "purple" : "outline"}
                 className="w-full text-xs h-8"
-                onClick={() => handlePurchase(pkg.credits, pkg.bonus, pkg.label)}
+                onClick={() => handlePurchase(pkg)}
+                disabled={purchasingId === pkg.id}
               >
-                ${pkg.price.toFixed(2)}
+                {purchasingId === pkg.id ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  `${pkg.price.toFixed(2)} zł`
+                )}
               </Button>
               {pkg.bonus && (
                 <div className="mt-2 flex items-center gap-1 text-[10px] text-emerald-600 font-medium">
-                  <Gift className="w-3 h-3" /> {t.bonus}
+                  <Gift className="w-3 h-3" /> Zawiera bonus!
                 </div>
               )}
             </motion.div>
           ))}
         </div>
         <p className="text-xs text-muted-foreground text-center mt-3">
-          💡 Demo: kliknięcie pakietu dodaje diamenty natychmiast
+          🔒 Płatność przez Stripe · Karta, BLIK, Apple Pay, Google Pay
         </p>
       </div>
 
       {/* Transaction history */}
       <div>
-        <h2 className="text-sm font-semibold text-foreground mb-3">{t.history}</h2>
+        <h2 className="text-sm font-semibold text-foreground mb-3">Historia transakcji</h2>
         <div className="card-base divide-y divide-border">
           {isLoading ? (
             Array.from({ length: 3 }).map((_, i) => (
@@ -268,22 +314,32 @@ export default function WalletPage() {
               </div>
             ))
           ) : transactions.length === 0 ? (
-            <div className="px-4 py-8 text-center text-sm text-muted-foreground">No transactions yet</div>
+            <div className="px-4 py-8 text-center text-sm text-muted-foreground">
+              Brak transakcji
+            </div>
           ) : (
             transactions.map((tx) => (
               <div key={tx.id} className="flex items-center gap-3 px-4 py-3">
-                <div className={cn("w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0", tx.amount > 0 ? "bg-emerald-50" : "bg-red-50")}>
+                <div className={cn(
+                  "w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0",
+                  tx.amount > 0 ? "bg-emerald-50" : "bg-red-50"
+                )}>
                   {tx.amount > 0
                     ? <ArrowUpRight className="w-4 h-4 text-emerald-600" />
                     : <ArrowDownLeft className="w-4 h-4 text-rose-500" />
                   }
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="text-xs font-medium text-foreground truncate">{tx.description ?? (tx.type === "spend" ? "Content unlocked" : "Credits added")}</div>
+                  <div className="text-xs font-medium text-foreground truncate">
+                    {tx.description ?? (tx.type === "spend" ? "Odblokowanie treści" : "Zakup diamentów")}
+                  </div>
                   <div className="text-xs text-muted-foreground">{timeAgo(tx.created_at)}</div>
                 </div>
-                <div className={cn("text-sm font-semibold tabular-nums flex-shrink-0", tx.amount > 0 ? "text-emerald-600" : "text-rose-500")}>
-                  {tx.amount > 0 ? "+" : ""}{tx.amount}
+                <div className={cn(
+                  "text-sm font-semibold tabular-nums flex-shrink-0",
+                  tx.amount > 0 ? "text-emerald-600" : "text-rose-500"
+                )}>
+                  {tx.amount > 0 ? "+" : ""}{tx.amount} 💎
                 </div>
               </div>
             ))
@@ -291,10 +347,15 @@ export default function WalletPage() {
         </div>
       </div>
 
-      {/* How credits work */}
+      {/* Info */}
       <div className="card-base p-4 bg-purple-50 border-purple-100 space-y-2">
-        <h3 className="text-sm font-semibold text-purple-900">{t.howTitle}</h3>
-        {[t.how1, t.how2, t.how3, t.how4].map((item) => (
+        <h3 className="text-sm font-semibold text-purple-900">Jak działają diamenty?</h3>
+        {[
+          "Kup diamenty i odblokuj ekskluzywne treści twórców",
+          "Dawaj napiwki swoim ulubionym twórcom",
+          "Twórcy wypłacają diamenty — 500 💎 = 50 zł",
+          "Płatności obsługiwane przez Stripe — bezpiecznie i szybko",
+        ].map((item) => (
           <div key={item} className="flex items-start gap-2">
             <Check className="w-3.5 h-3.5 text-purple-600 mt-0.5 flex-shrink-0" />
             <span className="text-xs text-purple-800">{item}</span>
