@@ -166,7 +166,12 @@ export default function LandingPage() {
               background: "linear-gradient(135deg,#ec4899,#c026d3,#7c3aed)",
               display: "flex", alignItems: "center", justifyContent: "center",
             }}>
-              <span style={{ color: "#fff", fontSize: 16, fontWeight: 900 }}>S</span>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <polygon points="12,2 20,9 12,9" fill="white" opacity="0.6" />
+                <polygon points="12,2 4,9 12,9" fill="white" opacity="0.85" />
+                <polygon points="4,9 12,22 20,9" fill="white" />
+                <polygon points="12,9 12,22 20,9" fill="white" opacity="0.75" />
+              </svg>
             </div>
             <span style={{ fontSize: 20, fontWeight: 800, letterSpacing: "-0.03em", color: "#1a0030" }}>Secrely</span>
           </div>
@@ -435,7 +440,12 @@ export default function LandingPage() {
         <div style={{ maxWidth: 1200, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 16 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <div style={{ width: 28, height: 28, borderRadius: 8, background: "linear-gradient(135deg,#ec4899,#c026d3,#7c3aed)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <span style={{ color: "#fff", fontSize: 13, fontWeight: 900 }}>S</span>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <polygon points="12,2 20,9 12,9" fill="white" opacity="0.6" />
+                <polygon points="12,2 4,9 12,9" fill="white" opacity="0.85" />
+                <polygon points="4,9 12,22 20,9" fill="white" />
+                <polygon points="12,9 12,22 20,9" fill="white" opacity="0.75" />
+              </svg>
             </div>
             <span style={{ fontWeight: 800, color: "#1a0030", letterSpacing: "-0.02em" }}>Secrely</span>
           </div>
