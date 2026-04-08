@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { motion } from "motion/react";
-import { TrendingUp, Eye, Heart, BarChart2, PlusCircle, Users, DollarSign, RefreshCw } from "lucide-react";
+import { motion, AnimatePresence } from "motion/react";
+import { TrendingUp, Eye, Heart, BarChart2, PlusCircle, Users, DollarSign, RefreshCw, Trash2, X } from "lucide-react";
 import Link from "next/link";
 import { Diamond } from "@/components/Diamond";
 import { StatCard } from "@/components/StatCard";
@@ -12,6 +12,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { createClient } from "@/lib/supabase/client";
 import { useT } from "@/hooks/useT";
 import { formatNumber, formatCredits } from "@/lib/utils";
+import { toast } from "@/hooks/useToast";
 import type { DashboardMetric } from "@/types/database";
 
 const supabase = createClient();
@@ -28,12 +29,13 @@ export default function DashboardPage() {
   const [chartData, setChartData] = useState<{ month: string; value: number }[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [lastRefresh, setLastRefresh] = useState(Date.now());
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const loadAll = useCallback(async () => {
     if (!profile?.id) return;
     setIsLoading(true);
 
-    // Fetch posts
     const { data: postsData } = await supabase
       .from("posts")
       .select("id, caption, teaser_text, image_url, is_locked, price, like_count, view_count, created_at")
@@ -41,7 +43,6 @@ export default function DashboardPage() {
       .order("created_at", { ascending: false });
     setPosts(postsData ?? []);
 
-    // Fetch earning transactions
     const { data: txs } = await supabase
       .from("credit_transactions")
       .select("amount, created_at")
@@ -58,7 +59,6 @@ export default function DashboardPage() {
     });
     setMonthlyEarnings(thisMonth.reduce((s, t) => s + t.amount, 0));
 
-    // Build 6-month chart
     const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
     const last6 = Array.from({ length: 6 }, (_, i) => {
       const d = new Date();
@@ -75,7 +75,6 @@ export default function DashboardPage() {
     });
     setChartData(last6);
 
-    // Fetch unlock count directly with a join query
     const { data: unlockData } = await supabase.rpc("get_creator_unlock_count", {
       p_creator_id: profile.id,
     });
@@ -84,10 +83,27 @@ export default function DashboardPage() {
     setIsLoading(false);
   }, [profile?.id]);
 
-  // Load every time page is visited (not cached)
   useEffect(() => {
     loadAll();
   }, [loadAll, lastRefresh]);
+
+  const handleDeletePost = async (postId: string) => {
+    setDeletingId(postId);
+    try {
+      // Usuń najpierw powiązane unlocked_posts
+      await supabase.from("unlocked_posts").delete().eq("post_id", postId);
+      // Usuń post
+      const { error } = await supabase.from("posts").delete().eq("id", postId);
+      if (error) throw error;
+      setPosts((prev) => prev.filter((p) => p.id !== postId));
+      toast({ title: "Post usunięty", variant: "success" });
+    } catch (err) {
+      toast({ title: "Błąd usuwania", description: String(err), variant: "destructive" });
+    } finally {
+      setDeletingId(null);
+      setConfirmDeleteId(null);
+    }
+  };
 
   const maxChart = Math.max(...chartData.map((d) => d.value), 1);
 
@@ -230,35 +246,72 @@ export default function DashboardPage() {
         )}
       </motion.div>
 
-      {/* Top posts */}
+      {/* Posts z przyciskiem usuwania */}
       {posts.length > 0 && (
         <div>
-          <h2 className="text-sm font-semibold text-foreground mb-3">{t.topPosts}</h2>
+          <h2 className="text-sm font-semibold text-foreground mb-3">Twoje posty</h2>
           <div className="card-base divide-y divide-border">
-            {posts.slice(0, 5).map((post, i) => (
-              <div key={post.id} className="flex items-center gap-3 px-4 py-3">
-                <span className="text-xs font-bold text-muted-foreground w-4 flex-shrink-0">{i + 1}</span>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-medium text-foreground truncate">
-                    {post.caption ?? post.teaser_text ?? "Bez tytułu"}
-                  </p>
-                  <div className="flex items-center gap-3 mt-1">
-                    <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                      <Eye className="w-3 h-3" />{formatNumber(post.view_count ?? 0)}
-                    </span>
-                    <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                      <Heart className="w-3 h-3" />{formatNumber(post.like_count ?? 0)}
-                    </span>
+            {posts.map((post, i) => (
+              <div key={post.id}>
+                <div className="flex items-center gap-3 px-4 py-3">
+                  <span className="text-xs font-bold text-muted-foreground w-4 flex-shrink-0">{i + 1}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium text-foreground truncate">
+                      {post.caption ?? post.teaser_text ?? "Bez tytułu"}
+                    </p>
+                    <div className="flex items-center gap-3 mt-1">
+                      <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                        <Eye className="w-3 h-3" />{formatNumber(post.view_count ?? 0)}
+                      </span>
+                      <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                        <Heart className="w-3 h-3" />{formatNumber(post.like_count ?? 0)}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    {post.is_locked
+                      ? <Badge variant="purple" className="text-[10px] flex items-center gap-0.5">
+                          <Diamond size={9} className="text-current" />{post.price}
+                        </Badge>
+                      : <Badge variant="secondary" className="text-[10px]">Free</Badge>
+                    }
+                    <button
+                      onClick={() => setConfirmDeleteId(post.id)}
+                      className="p-1.5 rounded-lg hover:bg-red-50 text-muted-foreground hover:text-rose-500 transition-colors"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
                   </div>
                 </div>
-                <div className="text-right flex-shrink-0">
-                  {post.is_locked
-                    ? <Badge variant="purple" className="text-[10px] flex items-center gap-0.5">
-                        <Diamond size={9} className="text-current" />{post.price}
-                      </Badge>
-                    : <Badge variant="secondary" className="text-[10px]">Free</Badge>
-                  }
-                </div>
+
+                {/* Potwierdzenie usunięcia */}
+                <AnimatePresence>
+                  {confirmDeleteId === post.id && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: "auto", opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      className="overflow-hidden"
+                    >
+                      <div className="px-4 pb-3 flex items-center gap-3 bg-red-50">
+                        <p className="text-xs text-rose-700 flex-1">Usunąć ten post? Tego nie można cofnąć.</p>
+                        <button
+                          onClick={() => setConfirmDeleteId(null)}
+                          className="p-1 text-muted-foreground hover:text-foreground"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => handleDeletePost(post.id)}
+                          disabled={deletingId === post.id}
+                          className="text-xs font-bold text-white bg-rose-500 hover:bg-rose-600 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+                        >
+                          {deletingId === post.id ? "Usuwam..." : "Usuń"}
+                        </button>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
             ))}
           </div>
