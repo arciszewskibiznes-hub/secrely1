@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion } from "motion/react";
 import { ArrowRight, RotateCcw, Mail } from "lucide-react";
@@ -10,6 +10,14 @@ import { createClient } from "@/lib/supabase/client";
 const supabase = createClient();
 
 export default function VerifyEmailPage() {
+  return (
+    <Suspense fallback={<div className="w-full max-w-sm"><div className="card-base p-8 flex items-center justify-center min-h-[300px]"><div className="w-8 h-8 border-2 border-purple-300 border-t-purple-600 rounded-full animate-spin" /></div></div>}>
+      <VerifyEmailContent />
+    </Suspense>
+  );
+}
+
+function VerifyEmailContent() {
   const [code, setCode] = useState(["", "", "", "", "", ""]);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
