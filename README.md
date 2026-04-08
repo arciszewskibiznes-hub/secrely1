@@ -161,7 +161,7 @@ This means unlocked posts remain unlocked across page refreshes, and credit bala
 - **Shadows:** Soft, layered — `card` and `card-hover` variants
 - **Motion:** Entrance animations via Motion library, subtle scale on interaction
 
----
+--- s
 
 ## Pages
 
