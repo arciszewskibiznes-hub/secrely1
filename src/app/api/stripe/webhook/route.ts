@@ -80,7 +80,5 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ received: true });
 }
 
-// Wymagane — wyłącz parsowanie body przez Next.js
-export const config = {
-  api: { bodyParser: false },
-};
+// Wymagane dla webhooków — odczyt raw body
+export const runtime = "nodejs";
