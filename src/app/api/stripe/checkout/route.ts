@@ -50,7 +50,7 @@ export async function POST(req: NextRequest) {
           },
         },
       ],
-      payment_method_types: ["card", "blik", "p24"],
+      payment_method_types: ["card", "blik"],
       metadata: {
         user_id: user.id,
         package_id: pkg.id,
