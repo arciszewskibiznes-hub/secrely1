@@ -8,7 +8,6 @@ import { Eye, EyeOff, ArrowRight, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { createClient } from "@/lib/supabase/client";
-import { useT } from "@/hooks/useT";
 
 const supabase = createClient();
 
@@ -21,28 +20,27 @@ export default function SignUpPage() {
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
-  const t = useT().signUpPage;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
 
     if (!displayName.trim() || !username.trim() || !email.trim() || !password) {
-      setError(t.errorEmpty);
+      setError("Wypełnij wszystkie pola.");
       return;
     }
     if (password.length < 6) {
-      setError(t.errorPassword);
+      setError("Hasło musi mieć co najmniej 6 znaków.");
       return;
     }
     if (!/^[a-z0-9_]{3,20}$/.test(username)) {
-      setError("Username: 3-20 characters, only lowercase letters, numbers and underscores.");
+      setError("Nazwa użytkownika: 3-20 znaków, tylko małe litery, cyfry i podkreślniki.");
       return;
     }
 
     setIsLoading(true);
 
-    // 1. Check username uniqueness
+    // 1. Sprawdź unikalność nazwy użytkownika
     const { data: existing } = await supabase
       .from("profiles")
       .select("id")
@@ -50,13 +48,12 @@ export default function SignUpPage() {
       .maybeSingle();
 
     if (existing) {
-      setError("That username is already taken. Please choose another.");
+      setError("Ta nazwa użytkownika jest już zajęta. Wybierz inną.");
       setIsLoading(false);
       return;
     }
 
-    // 2. Create auth user
-    // Trigger handle_new_user() will auto-create profile + credit_balances
+    // 2. Utwórz konto — Supabase wyśle email z kodem OTP
     const { data: authData, error: authError } = await supabase.auth.signUp({
       email: email.trim(),
       password,
@@ -65,19 +62,19 @@ export default function SignUpPage() {
           display_name: displayName.trim(),
           username: username.trim(),
         },
+        // emailRedirectTo not needed for OTP flow
       },
     });
 
     if (authError || !authData.user) {
-      setError(authError?.message ?? t.errorGeneric);
+      setError(authError?.message ?? "Wystąpił błąd. Spróbuj ponownie.");
       setIsLoading(false);
       return;
     }
 
     const userId = authData.user.id;
 
-    // 3. Upsert profile with the username/display_name the user entered
-    // (trigger may have already created it from metadata, this ensures correctness)
+    // 3. Upsert profil
     await supabase
       .from("profiles")
       .upsert(
@@ -88,15 +85,19 @@ export default function SignUpPage() {
     setIsLoading(false);
 
     if (authData.session) {
-      // Email confirmation disabled — go straight to feed
+      // Potwierdzenie emaila wyłączone — idź od razu do feedu
       router.replace("/feed");
     } else {
-      // Email confirmation required
-      setError("Account created! Check your email to confirm, then sign in.");
+      // Potwierdzenie emaila wymagane — przekieruj na stronę OTP
+      router.replace(`/verify-email?email=${encodeURIComponent(email.trim())}`);
     }
   };
 
-  const perks = [t.perk1, t.perk2, t.perk3];
+  const perks = [
+    "Zarabiaj na swoich treściach od pierwszego dnia",
+    "Własny profil publiczny pod secrely.pl/@ty",
+    "Diamenty wypłacalne w każdej chwili",
+  ];
 
   return (
     <motion.div
@@ -107,8 +108,12 @@ export default function SignUpPage() {
     >
       <div className="card-base p-8">
         <div className="text-center mb-6">
-          <h1 className="font-display text-2xl font-bold text-foreground mb-2">{t.title}</h1>
-          <p className="text-sm text-muted-foreground">{t.subtitle}</p>
+          <h1 className="font-display text-2xl font-bold text-foreground mb-2">
+            Utwórz konto
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            Dołącz do Secrely i zacznij zarabiać
+          </p>
         </div>
 
         <div className="bg-purple-50 rounded-xl p-3 mb-6 space-y-2">
@@ -124,74 +129,127 @@ export default function SignUpPage() {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t.name}</label>
-            <Input type="text" placeholder="Jan Kowalski" value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)} autoComplete="name" disabled={isLoading} />
+            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              Imię i nazwisko
+            </label>
+            <Input
+              type="text"
+              placeholder="Jan Kowalski"
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              autoComplete="name"
+              disabled={isLoading}
+            />
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Username</label>
+            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              Nazwa użytkownika
+            </label>
             <div className="relative">
-              <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">@</span>
-              <Input type="text" placeholder="jan_kowalski" value={username}
-                onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))}
-                autoComplete="username" className="pl-7" disabled={isLoading} />
+              <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">
+                @
+              </span>
+              <Input
+                type="text"
+                placeholder="jan_kowalski"
+                value={username}
+                onChange={(e) =>
+                  setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))
+                }
+                autoComplete="username"
+                className="pl-7"
+                disabled={isLoading}
+              />
             </div>
-            <p className="text-[10px] text-muted-foreground">3-20 characters: letters, numbers, underscores</p>
+            <p className="text-[10px] text-muted-foreground">
+              3-20 znaków: małe litery, cyfry, podkreślniki
+            </p>
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t.email}</label>
-            <Input type="email" placeholder="you@example.com" value={email}
-              onChange={(e) => setEmail(e.target.value)} autoComplete="email" disabled={isLoading} />
+            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              Email
+            </label>
+            <Input
+              type="email"
+              placeholder="ty@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              autoComplete="email"
+              disabled={isLoading}
+            />
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t.password}</label>
+            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              Hasło
+            </label>
             <div className="relative">
-              <Input type={showPassword ? "text" : "password"} placeholder={t.passwordPlaceholder}
-                value={password} onChange={(e) => setPassword(e.target.value)}
-                autoComplete="new-password" className="pr-10" disabled={isLoading} />
-              <button type="button"
+              <Input
+                type={showPassword ? "text" : "password"}
+                placeholder="Minimum 6 znaków"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete="new-password"
+                className="pr-10"
+                disabled={isLoading}
+              />
+              <button
+                type="button"
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                onClick={() => setShowPassword((s) => !s)}>
-                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                onClick={() => setShowPassword((s) => !s)}
+              >
+                {showPassword ? (
+                  <EyeOff className="w-4 h-4" />
+                ) : (
+                  <Eye className="w-4 h-4" />
+                )}
               </button>
             </div>
           </div>
 
           {error && (
-            <p className={`text-xs rounded-lg px-3 py-2 ${
-              error.startsWith("Account created")
-                ? "text-emerald-700 bg-emerald-50"
-                : "text-destructive bg-red-50"
-            }`}>
+            <p className="text-xs text-destructive bg-red-50 rounded-lg px-3 py-2">
               {error}
             </p>
           )}
 
-          <Button type="submit" variant="purple" size="lg" className="w-full" disabled={isLoading}>
+          <Button
+            type="submit"
+            variant="purple"
+            size="lg"
+            className="w-full"
+            disabled={isLoading}
+          >
             {isLoading ? (
               <span className="flex items-center gap-2">
                 <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                {t.submitting}
+                Tworzę konto...
               </span>
             ) : (
-              <span className="flex items-center gap-2">{t.submit} <ArrowRight className="w-4 h-4" /></span>
+              <span className="flex items-center gap-2">
+                Zarejestruj się <ArrowRight className="w-4 h-4" />
+              </span>
             )}
           </Button>
 
           <p className="text-[11px] text-muted-foreground text-center leading-relaxed">
-            {t.terms} <span className="text-[hsl(270,75%,60%)]">{t.termsLink}</span>{" "}
-            {t.andText} <span className="text-[hsl(270,75%,60%)]">{t.privacyLink}</span>.
+            Rejestrując się akceptujesz{" "}
+            <span className="text-[hsl(270,75%,60%)]">Regulamin</span>{" "}
+            oraz{" "}
+            <span className="text-[hsl(270,75%,60%)]">Politykę prywatności</span>.
           </p>
         </form>
 
         <div className="mt-5 text-center">
           <p className="text-sm text-muted-foreground">
-            {t.hasAccount}{" "}
-            <Link href="/sign-in" className="text-[hsl(270,75%,60%)] font-semibold hover:underline">
-              {t.signIn}
+            Masz już konto?{" "}
+            <Link
+              href="/sign-in"
+              className="text-[hsl(270,75%,60%)] font-semibold hover:underline"
+            >
+              Zaloguj się
             </Link>
           </p>
         </div>
