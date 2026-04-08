@@ -6,14 +6,14 @@ import { Home, Compass, Bell, MessageCircle, Search, MoreHorizontal, X, Wallet, 
 import { cn } from "@/lib/utils";
 import { useT } from "@/hooks/useT";
 import { useUnreadNotifications } from "@/hooks/useNotifications";
-import { useAuth } from "@/hooks/useAuth";
+import { useAuth, getDisplayName, getUsername } from "@/hooks/useAuth";
 import { isAdmin } from "@/lib/admin";
 import { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { Diamond } from "@/components/Diamond";
 import { useCredits } from "@/hooks/useCredits";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { getDisplayName, getUsername, getInitials } from "@/hooks/useAuth";
+import { getInitials } from "@/lib/utils";
 
 export function BottomNav() {
   const pathname = usePathname();
